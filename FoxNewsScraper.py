@@ -13,11 +13,19 @@ import json
 
 
 class TreeNode:
+    node_id = 0
+
     def __init__(self, text, username, comment_time, depth=0, children=None):
+        self.id = TreeNode.increment_id()
         self.text = text
         self.username = username
         self.comment_time = comment_time
         self.children = children or []
+
+    @staticmethod
+    def increment_id():
+        TreeNode.node_id += 1
+        return TreeNode.node_id
 
 
 # def write_tree_to_csv(node, csv_writer, depth=0):
@@ -33,11 +41,11 @@ class TreeNode:
 #         write_tree_to_csv(child, csv_writer, depth=depth)
 
 
-def print_tree(node, depth=0):
-    with open('comment_tree.csv', 'a', newline='') as csv_file:
-        csv_writer = csv.writer(csv_file)
-        csv_writer.writerow(['Text', 'Username', 'Time', 'Depth'])
-        write_tree_to_csv(node, csv_writer, depth=depth)
+# def print_tree(node, depth=0):
+#     with open('comment_tree.csv', 'a', newline='') as csv_file:
+#         csv_writer = csv.writer(csv_file)
+#         csv_writer.writerow(['Text', 'Username', 'Time', 'Depth'])
+#         write_tree_to_csv(node, csv_writer, depth=depth)
 
 
 class FoxNewsScraper(object):
@@ -58,14 +66,24 @@ class FoxNewsScraper(object):
         # print("username: ", username)
 
         time_element = article_div_div_div.find_element(By.CSS_SELECTOR, '[data-spot-im-class="message-timestamp"]')
-        comment_time = time_element.text
-        # print("comment_time: ", comment_time)
+        comment_time = time_element.get_attribute("title")
+        print("comment_time: ", comment_time)
+
+        message_text_element = article_div_div_div.find_element(By.CSS_SELECTOR, '[data-spot-im-class="message-text"]')
+
+
+        try:
+            comment_see_more_span = message_text_element.find_element_by_css_selector("span")
+            comment_see_more_span.click()
+            print("see more clicked")
+        except Exception as e:
+            print("there is no see more in text")
 
         message_text_element = article_div_div_div.find_element(By.CSS_SELECTOR, '[data-spot-im-class="message-text"]')
         text = message_text_element.text
 
-        print("username+depth")
-        print(username, depth)
+        # print("username+depth")
+        # print(username, depth)
 
         node = TreeNode(text, username=username, comment_time=comment_time)
         if depth == maxdepth:
@@ -155,7 +173,7 @@ class FoxNewsScraper(object):
         # self.username = username
         # self.comment_time = comment_time
         # self.children = children or []
-        return {'text': node.text, 'username': node.username,'comment_time': node.comment_time, 'children': [self.convert_tree_node_to_dict(child) for child in node.children]}
+        return {'id': node.id, 'text': node.text, 'username': node.username,'comment_time': node.comment_time, 'children': [self.convert_tree_node_to_dict(child) for child in node.children]}
 
     def load_content(self, url):
         self.browser.get(url)
@@ -168,7 +186,8 @@ class FoxNewsScraper(object):
             EC.visibility_of_element_located((By.XPATH, '//div[@data-spotim-module="conversation"]'))
         )
 
-        for i in range(20):
+        # click load more comments max 20 times
+        for i in range(100):
             print("clicking see more comments for i: ", i)
             try:
                 print("clicking show more comments")
@@ -191,7 +210,26 @@ class FoxNewsScraper(object):
         inner_conversation = self.browser.execute_script(
             """return document.querySelector('[data-spotim-module="conversation"][data-spot-im-module-default-area="conversation"]').querySelector('div').shadowRoot.querySelector('[data-spotim-module="conversation"][data-spot-im-module-default-area="conversation"]')"""
         )
-        ul = inner_conversation.find_element_by_xpath('//ul[@class="spcv_messages-list"]')
+
+        # inner_conversation_children = inner_conversation.find_elements_by_xpath("./*")
+        # print("inner_conversation_children.len: ", len(inner_conversation_children))
+
+        # inner_conversation_html = inner_conversation.get_attribute("outerHTML")
+        # print("inner_conversation_html")
+        # print(inner_conversation_html)
+
+        # # Creating an HTML file
+        # func = open("GFG-1.html", "w")
+        #
+        # # Adding input data to the HTML file
+        # func.write(inner_conversation_html)
+        #
+        # # Saving the data into the HTML file
+        # func.close()
+
+
+        # ul = inner_conversation.find_element_by_xpath('//ul[@class="spcv_messages-list"]')
+        ul = inner_conversation.find_element_by_class_name("spcv_messages-list")
 
         # get first level lis
         first_level_li_elements = ul.find_elements_by_css_selector('li:not(li li)')
@@ -201,24 +239,25 @@ class FoxNewsScraper(object):
         node_dicts = []
         i = 0
         # change it to define how may root comment to scrape
-        max_first_level_comment = 5
-        for li in first_level_li_elements:
-            if i < max_first_level_comment:
-                print("call recursive function for the comment tree with i: ", i)
-                article = li.find_element_by_tag_name("article")
-                article_div = article.find_element_by_class_name("spcv_threadingLine")
-                # change maxdepth of reply to change how many depth to scrape
-                node = self.recursive_function(article_div, depth=1, maxdepth=3)
-                node_dict = self.convert_tree_node_to_dict(node=node)
-                nodes.append(node)
-                node_dicts.append(node_dict)
-                # nodes.append(self.recursive_function(article_div))
-            i = i + 1
+        max_first_level_comment = 500
+        for i in range(len(first_level_li_elements) - 1):
+            # if i < max_first_level_comment:
+            li = first_level_li_elements[i]
+            print("call recursive function for the comment tree with i: ", i)
+            article = li.find_element_by_tag_name("article")
+            article_div = article.find_element_by_class_name("spcv_threadingLine")
+            # change maxdepth of reply to change how many depth to scrape
+            node = self.recursive_function(article_div, depth=1, maxdepth=10)
+            node_dict = self.convert_tree_node_to_dict(node=node)
+            nodes.append(node)
+            node_dicts.append(node_dict)
+            # nodes.append(self.recursive_function(article_div))
+            # i = i + 1
         for node in nodes:
             print(node.username)
         print("Writing the comment tree into csv file")
         # Specify the text file path
-        txt_file_path = 'output.txt'
+        txt_file_path = 'url2.txt'
 
         # Convert the nested dictionary to a JSON-formatted string
         json_data = json.dumps(node_dicts, indent=2)
@@ -242,5 +281,12 @@ url = "https://www.foxnews.com/entertainment/paulina-porizkova-58-poses-topless-
 url1 = "https://www.foxnews.com/politics/biden-admin-confident-protect-americas-secrets-reports-china-spy-base-cuba"
 # more level of replies
 url1 = "https://www.foxnews.com/politics/hispanic-house-democrat-joins-republicans-calling-tougher-measures-border"
-scraper.load_content(url1)
+
+# ismail urls
+url_1 = "https://www.foxnews.com/opinion/bidens-2024-election-insurance-policy-surprise-you"
+url_2 = "https://www.foxnews.com/media/teachers-england-instructed-dont-accept-student-gender-transition-requests"
+url_3 = "https://www.foxnews.com/opinion/bidens-secretive-ai-strategy-goes-against-ideal-openai"
+url_4 = "https://www.foxnews.com/opinion/my-11-year-old-daughters-school-planned-having-her-share-bed-male-student"
+
+scraper.load_content(url_2)
 
